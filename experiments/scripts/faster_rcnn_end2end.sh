@@ -23,6 +23,12 @@ EXTRA_ARGS=${array[@]:3:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 case $DATASET in
+  imagenet)
+    TRAIN_IMDB="imagenet_trainval"
+    TEST_IMDB="imagenet_test"
+    PT_DIR="imagenet"
+    ITERS=20000
+    ;;
   pascal_voc)
     TRAIN_IMDB="voc_2007_trainval"
     TEST_IMDB="voc_2007_test"
@@ -59,6 +65,8 @@ time ./tools/train_net.py --gpu ${GPU_ID} \
 set +x
 NET_FINAL=`grep -B 1 "done solving" ${LOG} | grep "Wrote snapshot" | awk '{print $4}'`
 set -x
+
+#NET_FINAL=/home/makis/Repo/mdouskos/py-faster-rcnn/output/faster_rcnn_end2end/imagenet_trainval/zf_faster_rcnn_iter_20000.caffemodel
 
 time ./tools/test_net.py --gpu ${GPU_ID} \
   --def models/${PT_DIR}/${NET}/faster_rcnn_end2end/test.prototxt \
