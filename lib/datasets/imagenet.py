@@ -26,9 +26,17 @@ class imagenet(imdb):
         self._devkit_path = self._get_default_path() if devkit_path is None \
                             else devkit_path
         self._data_path = os.path.join(self._devkit_path)
-        self._wnid = ('__background__','n02908217','n03063073','n04409806')
+        self._wnid = ('__background__','n00007846','n00483705',
+			'n02084071','n02374451','n02764044',
+			'n02834778','n02908217','n03063073',
+			'n03540090','n03584829','n03649909',
+			'n04409806','n04453156','n04517823')
         self._classes = ('__background__', # always index 0
-                        'brush','coffee cup','tennis racquet')
+                        'person','tennis court',
+			'dog','horse','axe',
+			'bicycle','brush','coffee cup',
+			'hose','clothes iron','lawn mower',
+			'tennis racquet','toothbrush','vacuum cleaner')
         self._wnid_to_ind = dict(zip(self._wnid, xrange(self.num_classes)))
         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
         self._image_ext = '.JPEG'

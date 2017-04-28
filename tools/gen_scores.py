@@ -21,9 +21,8 @@ from utils.timer import Timer
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io as sio
-import caffe, os, sys, cv2
+import caffe, os, sys, glob, cv2
 import argparse
-
 
 CLASSES = ('__background__',
              'person','tennis court',
@@ -31,11 +30,7 @@ CLASSES = ('__background__',
 		'bicycle','brush','coffee cup',
 		'hose','clothes iron','lawn mower',
 		'tennis racquet','toothbrush','vacuum cleaner')
-'''
-CLASSES = ('__background__',
-             'brush','coffee cup',
-		'tennis racquet')
-'''
+
 NETS = {'vgg16': ('VGG16',
                   'VGG16_faster_rcnn_final.caffemodel'),
         'zf': ('ZF',
@@ -43,58 +38,27 @@ NETS = {'vgg16': ('VGG16',
         'zfim': ('ZF',
                 'ZF_faster_rcnn_imagenet_final.caffemodel')}
 
-
-def vis_detections(im, class_name, dets, thresh=0.5):
-    """Draw detected bounding boxes."""
-    inds = np.where(dets[:, -1] >= thresh)[0]
-    if len(inds) == 0:
-        return
-
-    im = im[:, :, (2, 1, 0)]
-    fig, ax = plt.subplots(figsize=(12, 12))
-    ax.imshow(im, aspect='equal')
-    for i in inds:
-        bbox = dets[i, :4]
-        score = dets[i, -1]
-
-        ax.add_patch(
-            plt.Rectangle((bbox[0], bbox[1]),
-                          bbox[2] - bbox[0],
-                          bbox[3] - bbox[1], fill=False,
-                          edgecolor='red', linewidth=3.5)
-            )
-        ax.text(bbox[0], bbox[1] - 2,
-                '{:s} {:.3f}'.format(class_name, score),
-                bbox=dict(facecolor='blue', alpha=0.5),
-                fontsize=14, color='white')
-
-    ax.set_title(('{} detections with '
-                  'p({} | box) >= {:.1f}').format(class_name, class_name,
-                                                  thresh),
-                  fontsize=14)
-    plt.axis('off')
-    plt.tight_layout()
-    plt.draw()
-
-def demo(net, image_name):
+def detection(net, image_name):
     """Detect object classes in an image using pre-computed object proposals."""
 
+    basename = os.path.basename(image_name)
+    outputfile = '{}.mat'.format(os.path.join(args.save_dir, basename))
+    if os.path.exists(outputfile):
+        return
+
     # Load the demo image
-    im_file = os.path.join(cfg.DATA_DIR, 'demo', image_name)
+    im_file = os.path.join(image_name)
     im = cv2.imread(im_file)
 
     # Detect all object classes and regress object bounds
-    timer = Timer()
-    timer.tic()
     scores, boxes = im_detect(net, im)
-    timer.toc()
-    print ('Detection took {:.3f}s for '
-           '{:d} object proposals').format(timer.total_time, boxes.shape[0])
+    boxsave = np.vstack((np.mean(boxes[:,0::4],axis=1),np.mean(boxes[:,1::4],axis=1),np.mean(boxes[:,2::4],axis=1),np.mean(boxes[:,3::4],axis=1))).T
 
-    if args.savemat:
+    if args.debug:
         print 'Saving scores and BBs to mat file'
-        boxsave = np.vstack((np.mean(boxes[:,0::4],axis=1),np.mean(boxes[:,1::4],axis=1),np.mean(boxes[:,2::4],axis=1),np.mean(boxes[:,3::4],axis=1))).T
-        sio.savemat('{}.mat'.format(image_name),{'boxes':boxsave,'zs':scores})
+
+
+    #print ('{}.mat'.format(os.path.join(args.save_dir, basename)))
 
     # Visualize detections for each class
     CONF_THRESH = 0.8
@@ -107,12 +71,14 @@ def demo(net, image_name):
                           cls_scores[:, np.newaxis])).astype(np.float32)
         keep = nms(dets, NMS_THRESH)
         dets = dets[keep, :]
-	if not args.novis:
-		vis_detections(im, cls, dets, thresh=CONF_THRESH)
+
+    sio.savemat(outputfile, {'boxes':boxsave,'zs':scores,'cls':cls,'dets':dets})
 
 def parse_args():
     """Parse input arguments."""
-    parser = argparse.ArgumentParser(description='Faster R-CNN demo')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('frames_dir')
+    parser.add_argument('save_dir')
     parser.add_argument('--gpu', dest='gpu_id', help='GPU device id to use [0]',
                         default=0, type=int)
     parser.add_argument('--cpu', dest='cpu_mode',
@@ -120,8 +86,8 @@ def parse_args():
                         action='store_true')
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
                         choices=NETS.keys(), default='vgg16')
-    parser.add_argument('--novis', action='store_true', help='Don''t visualize results')
-    parser.add_argument('--savemat', action='store_true', help='Store scores and BBs to mat files')
+    #parser.add_argument('--savemat', action='store_true', help='Store scores and BBs to mat files')
+    parser.add_argument('--debug', action='store_true', help='Debug mode')
 
     args = parser.parse_args()
 
@@ -156,11 +122,18 @@ if __name__ == '__main__':
     for i in xrange(2):
         _, _= im_detect(net, im)
 
-    im_names = ['cup1.jpeg','cup2.jpeg','cup3.jpeg','brush1.jpeg','brush2.jpeg','brush3.jpeg','racquet1.jpeg',
-                'racquet2.jpeg']
-    for im_name in im_names:
-        print '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
-        print 'Demo for data/demo/{}'.format(im_name)
-        demo(net, im_name)
+    images = sorted(glob.glob(os.path.join(args.frames_dir,'*')))
+    print ("Processing {}: {} files... ".format(args.frames_dir, len(images))),
+    sys.stdout.flush
 
-    plt.show()
+    if not os.path.isdir(args.save_dir):
+        os.makedirs(args.save_dir)
+
+    timer = Timer()
+    timer.tic()
+    for image in images:
+        if args.debug:
+            print ("Processing file {}".format(image))
+        detection(net, image)
+    timer.toc()
+    print "{:.2f} min, {:.2f} fps".format((timer.total_time) / 60., 1. * len(images) / (timer.total_time))
